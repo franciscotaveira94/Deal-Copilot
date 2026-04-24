@@ -1,166 +1,168 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ActiveLink } from "./active-link";
-import { SidebarSearch } from "./sidebar-search";
-import { Kanban, LayoutGrid, CheckCircle2, Plus, Sparkles, Home, Building2, Settings as SettingsIcon, MailQuestion } from "lucide-react";
-import { stageStyle, STAGE_LABELS, formatArr, initials } from "@/lib/utils";
+import {
+  Home,
+  Kanban,
+  CheckCircle2,
+  Plus,
+  Building2,
+  Settings as SettingsIcon,
+  MailQuestion,
+  LayoutGrid,
+} from "lucide-react";
+import { stageStyle, formatArr } from "@/lib/utils";
 
 export async function Sidebar() {
   const now = new Date();
-  const [accounts, openActions, pipelineSummary, orgCount, overdueRepliesCount] = await Promise.all([
-    prisma.account.findMany({
-      where: { status: "active" },
-      orderBy: { lastTouch: "desc" },
-      select: { id: true, name: true, stage: true, priority: true, arr: true },
-    }),
-    prisma.action.count({ where: { done: false } }),
-    prisma.account.groupBy({
-      by: ["stage"],
-      where: {
-        status: "active",
-        stage: { in: ["discovery", "qualified", "proposal", "negotiation"] },
-      },
-      _sum: { arr: true },
-      _count: true,
-    }),
-    prisma.organisation.count(),
-    prisma.timelineEntry.count({
-      where: {
-        awaitingReplyDueAt: { lt: now },
-        awaitedReplyResolvedAt: null,
-        awaitingReplyFromId: { not: null },
-      },
-    }),
-  ]);
+  const [accounts, openActions, pipelineSummary, orgCount, overdueRepliesCount] =
+    await Promise.all([
+      prisma.account.findMany({
+        where: { status: "active" },
+        orderBy: { lastTouch: "desc" },
+        select: { id: true, name: true, stage: true, arr: true },
+        take: 12,
+      }),
+      prisma.action.count({ where: { done: false } }),
+      prisma.account.groupBy({
+        by: ["stage"],
+        where: {
+          status: "active",
+          stage: { in: ["discovery", "qualified", "proposal", "negotiation"] },
+        },
+        _sum: { arr: true },
+        _count: true,
+      }),
+      prisma.organisation.count(),
+      prisma.timelineEntry.count({
+        where: {
+          awaitingReplyDueAt: { lt: now },
+          awaitedReplyResolvedAt: null,
+          awaitingReplyFromId: { not: null },
+        },
+      }),
+    ]);
 
-  const pipelineArr = pipelineSummary.reduce((sum, g) => sum + (g._sum.arr || 0), 0);
-  const pipelineCount = pipelineSummary.reduce((sum, g) => sum + g._count, 0);
+  const pipelineArr = pipelineSummary.reduce((s, g) => s + (g._sum.arr || 0), 0);
+  const pipelineCount = pipelineSummary.reduce((s, c) => s + c._count, 0);
 
   return (
-    <aside className="w-[272px] shrink-0 border-r border-[var(--line-2)] bg-white flex flex-col h-screen sticky top-0 z-20">
-      {/* Brand */}
-      <div className="px-4 pt-4 pb-3">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-[30px] h-[30px] rounded-[7px] bg-gradient-to-br from-[var(--accent)] to-[var(--accent-ink)] flex items-center justify-center shadow-[0_2px_6px_rgba(243,128,32,0.25)]">
-            <Sparkles className="w-3.5 h-3.5 text-white" strokeWidth={2.6} />
-          </div>
-          <div className="flex flex-col leading-none">
-            <span className="font-semibold text-[14px] tracking-tight text-[var(--ink)]">
-              Deal Copilot
-            </span>
-            <span className="text-[11px] text-[var(--muted)] mt-0.5">
-              Personal AE workspace
-            </span>
-          </div>
+    <aside className="w-[248px] shrink-0 border-r border-[var(--rule-2)] bg-[var(--paper)] flex flex-col h-screen sticky top-0 z-20">
+      {/* Brand — editorial mark */}
+      <div className="px-5 pt-6 pb-5">
+        <Link href="/" className="flex items-baseline gap-2 group">
+          <span
+            className="font-serif italic text-[22px] leading-none text-[var(--ink)]"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Copilot
+          </span>
+          <span className="text-[10px] tracking-[0.2em] uppercase text-[var(--muted-2)]">
+            Deal
+          </span>
         </Link>
       </div>
 
-      {/* Search */}
-      <div className="px-3 pb-2">
-        <SidebarSearch accounts={accounts} />
-      </div>
-
-      {/* Primary nav */}
-      <nav className="px-2 pb-2">
+      {/* Primary nav — typographic, not icon-heavy */}
+      <nav className="px-3 pb-2">
         <ActiveLink href="/" exact>
-          <Home className="w-[14px] h-[14px]" />
-          <span>Today</span>
+          <Home className="w-[13px] h-[13px]" strokeWidth={1.7} />
+          <span>Brief</span>
         </ActiveLink>
         <ActiveLink href="/pipeline">
-          <Kanban className="w-[14px] h-[14px]" />
+          <Kanban className="w-[13px] h-[13px]" strokeWidth={1.7} />
           <span>Pipeline</span>
           {pipelineCount > 0 && (
-            <span className="ml-auto text-[10.5px] text-[var(--muted)] font-medium tabular-nums">
+            <span className="ml-auto text-[10.5px] text-[var(--muted-2)] font-medium tabular-nums">
               {pipelineCount}
             </span>
           )}
         </ActiveLink>
         <ActiveLink href="/accounts">
-          <LayoutGrid className="w-[14px] h-[14px]" />
-          <span>All accounts</span>
+          <LayoutGrid className="w-[13px] h-[13px]" strokeWidth={1.7} />
+          <span>Ledger</span>
         </ActiveLink>
         <ActiveLink href="/orgs">
-          <Building2 className="w-[14px] h-[14px]" />
-          <span>Organisations</span>
+          <Building2 className="w-[13px] h-[13px]" strokeWidth={1.7} />
+          <span>Parties</span>
           {orgCount > 0 && (
-            <span className="ml-auto text-[10.5px] text-[var(--muted)] font-medium tabular-nums">
+            <span className="ml-auto text-[10.5px] text-[var(--muted-2)] font-medium tabular-nums">
               {orgCount}
             </span>
           )}
         </ActiveLink>
         <ActiveLink href="/actions">
-          <CheckCircle2 className="w-[14px] h-[14px]" />
-          <span>Actions</span>
+          <CheckCircle2 className="w-[13px] h-[13px]" strokeWidth={1.7} />
+          <span>Tasks</span>
           {openActions > 0 && (
-            <span className="ml-auto text-[10.5px] text-[var(--muted)] font-medium tabular-nums">
+            <span className="ml-auto text-[10.5px] text-[var(--muted-2)] font-medium tabular-nums">
               {openActions}
             </span>
           )}
         </ActiveLink>
+
         {overdueRepliesCount > 0 && (
           <ActiveLink href="/">
-            <MailQuestion className="w-[14px] h-[14px] text-[var(--neg)]" />
-            <span className="text-[var(--neg)]">Overdue replies</span>
-            <span className="ml-auto text-[10.5px] text-white bg-[var(--neg)] font-semibold rounded-full w-[16px] h-[16px] flex items-center justify-center tabular-nums">
+            <MailQuestion className="w-[13px] h-[13px] text-[var(--rust)]" strokeWidth={1.7} />
+            <span className="text-[var(--rust)]">Silent threads</span>
+            <span className="ml-auto text-[10px] text-white bg-[var(--rust)] font-semibold rounded-full w-[15px] h-[15px] flex items-center justify-center tabular-nums">
               {overdueRepliesCount}
             </span>
           </ActiveLink>
         )}
-        <ActiveLink href="/settings">
-          <SettingsIcon className="w-[14px] h-[14px]" />
-          <span>Settings</span>
-        </ActiveLink>
       </nav>
 
-      {/* Pipeline stat block */}
-      <div className="mx-3 mb-2 px-3 py-2.5 rounded-[8px] bg-[var(--bg-subtle)] border border-[var(--line-2)]">
-        <div className="flex items-center justify-between">
-          <span className="text-[10.5px] font-semibold tracking-[0.06em] uppercase text-[var(--muted)]">
-            Open pipeline
-          </span>
-          <span className="text-[11px] text-[var(--muted)] font-medium tabular-nums">
-            {pipelineCount} deal{pipelineCount === 1 ? "" : "s"}
+      <div className="px-5 my-2">
+        <hr className="hairline" />
+      </div>
+
+      {/* Pipeline figure — small, restrained */}
+      <div className="px-5 pb-3">
+        <div className="flex items-baseline justify-between mb-1">
+          <span className="label text-[9.5px]">Open pipeline</span>
+          <span className="text-[10.5px] text-[var(--muted)] tabular-nums">
+            {pipelineCount}
           </span>
         </div>
-        <div className="mt-1 text-[17px] font-semibold tabular-nums text-[var(--ink)]">
+        <div
+          className="text-[22px] font-serif tabular-nums text-[var(--ink)] leading-none"
+          style={{ fontFamily: "var(--font-serif)" }}
+        >
           {formatArr(pipelineArr)}
         </div>
       </div>
 
-      {/* Accounts list */}
-      <div className="flex-1 overflow-y-auto px-2 py-1 min-h-0">
-        <div className="flex items-center justify-between px-2.5 py-1.5">
-          <span className="text-[10.5px] font-semibold tracking-[0.06em] uppercase text-[var(--muted)]">
-            Accounts
-          </span>
+      <div className="px-5 my-1">
+        <hr className="hairline" />
+      </div>
+
+      {/* Deals — quiet list */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 min-h-0">
+        <div className="flex items-center justify-between px-2 py-1.5 mb-0.5">
+          <span className="label text-[9.5px]">Recent</span>
           <Link
             href="/accounts/new"
-            className="text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg-hover)] rounded-[4px] p-0.5 transition"
-            title="New account"
+            className="text-[var(--muted-2)] hover:text-[var(--ink)] transition"
+            title="New deal  ⌘K"
           >
-            <Plus className="w-[13px] h-[13px]" strokeWidth={2.4} />
+            <Plus className="w-[12px] h-[12px]" strokeWidth={1.7} />
           </Link>
         </div>
         <div className="space-y-px">
           {accounts.length === 0 ? (
             <Link
               href="/accounts/new"
-              className="block mx-1 px-2.5 py-1.5 text-[12.5px] text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg-hover)] rounded-[5px]"
+              className="block mx-1 px-2.5 py-2 text-[12px] text-[var(--muted)] hover:text-[var(--ink)] transition"
             >
-              + New account
+              <span className="italic font-serif">First deal…</span>
             </Link>
           ) : (
             accounts.map((a) => {
-              const style = stageStyle(a.stage);
+              const st = stageStyle(a.stage);
               return (
                 <ActiveLink key={a.id} href={`/accounts/${a.id}`}>
-                  <span className={`tag-dot ${style.dot} shrink-0`} />
-                  <span className="flex-1 truncate text-[13px]">{a.name}</span>
-                  {a.arr != null && a.arr > 0 && (
-                    <span className="text-[10.5px] text-[var(--muted-2)] tabular-nums shrink-0">
-                      {formatArr(a.arr, { compact: true })}
-                    </span>
-                  )}
+                  <span className={`tag-dot ${st.dot} shrink-0`} />
+                  <span className="flex-1 truncate text-[12.5px]">{a.name}</span>
                 </ActiveLink>
               );
             })
@@ -169,10 +171,23 @@ export async function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-[var(--line-2)] text-[10.5px] text-[var(--muted-2)]">
-        <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--pos)]" />
-          Local · No data leaves your Mac
+      <div className="px-5 py-4 border-t border-[var(--rule-2)]">
+        <Link
+          href="/settings"
+          className="flex items-center gap-2 text-[11px] text-[var(--muted)] hover:text-[var(--ink)] mb-2 transition"
+        >
+          <SettingsIcon className="w-[11px] h-[11px]" strokeWidth={1.7} />
+          Settings
+        </Link>
+        <div className="flex items-center justify-between text-[10px] text-[var(--muted-2)]">
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--teal)] pulse-soft" />
+            Local
+          </span>
+          <span className="flex items-center gap-1">
+            <kbd>⌘</kbd>
+            <kbd>K</kbd>
+          </span>
         </div>
       </div>
     </aside>

@@ -1,456 +1,346 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
-import {
-  relative,
-  tinyDate,
-  stageStyle,
-  daysAgo,
-  formatArr,
-  kindMeta,
-  initials,
-} from "@/lib/utils";
-import { AlertTriangle, Clock, Snowflake, Calendar, TrendingUp, MailQuestion } from "lucide-react";
-import { ToggleAction } from "@/components/toggle-action";
-import { formatTimeTo } from "@/lib/followup";
+import { buildBrief, narrateBrief } from "@/lib/brief";
+import { formatArr } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function TodayPage() {
-  const now = new Date();
-  const [overdue, dueSoon, stale, upcoming, recentEntries, pipelineGroups, overdueReplies] =
-    await Promise.all([
-    prisma.action.findMany({
-      where: { done: false, dueAt: { lt: now } },
-      include: { account: true },
-      orderBy: { dueAt: "asc" },
-      take: 20,
-    }),
-    prisma.action.findMany({
-      where: {
-        done: false,
-        dueAt: { gte: now, lt: new Date(now.getTime() + 7 * 24 * 3600 * 1000) },
-      },
-      include: { account: true },
-      orderBy: { dueAt: "asc" },
-      take: 20,
-    }),
-    prisma.account.findMany({
-      where: {
-        status: "active",
-        stage: { in: ["discovery", "qualified", "proposal", "negotiation"] },
-      },
-      orderBy: { lastTouch: "asc" },
-      take: 20,
-    }),
-    prisma.timelineEntry.findMany({
-      where: {
-        kind: "meeting",
-        occurredAt: { gte: now, lt: new Date(now.getTime() + 14 * 24 * 3600 * 1000) },
-      },
-      include: { account: true },
-      orderBy: { occurredAt: "asc" },
-      take: 10,
-    }),
-    prisma.timelineEntry.findMany({
-      include: { account: true },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-    }),
-    prisma.account.groupBy({
-      by: ["stage"],
-      where: {
-        status: "active",
-        stage: { in: ["discovery", "qualified", "proposal", "negotiation"] },
-      },
-      _sum: { arr: true },
-      _count: true,
-    }),
-    prisma.timelineEntry.findMany({
-      where: {
-        awaitingReplyDueAt: { lt: now },
-        awaitedReplyResolvedAt: null,
-        awaitingReplyFromId: { not: null },
-      },
-      include: {
-        account: { select: { id: true, name: true } },
-        awaitingReplyFrom: { select: { id: true, name: true } },
-      },
-      orderBy: { awaitingReplyDueAt: "asc" },
-      take: 20,
-    }),
-  ]);
+export default async function Brief() {
+  const data = await buildBrief();
+  const prose = await narrateBrief(data);
+  const { counts, signals, date } = data;
 
-  const staleAccounts = stale.filter((a) => daysAgo(a.lastTouch) >= 14).slice(0, 8);
-  const pipelineArr = pipelineGroups.reduce((s, g) => s + (g._sum.arr || 0), 0);
-  const pipelineCount = pipelineGroups.reduce((s, c) => s + c._count, 0);
-  const needsAttention = overdue.length + staleAccounts.length + overdueReplies.length;
+  const overdueReplies = signals.filter((s) => s.kind === "overdue-reply");
+  const overdueActions = signals.filter((s) => s.kind === "overdue-action");
+  const stale = signals.filter((s) => s.kind === "stale");
+  const dueSoon = signals.filter((s) => s.kind === "action-due");
+  const upcoming = signals.filter((s) => s.kind === "upcoming");
+
+  const formattedDate = date.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+
+  const totalIssues = overdueReplies.length + overdueActions.length + stale.length;
 
   return (
-    <div className="max-w-[1200px] mx-auto px-10 py-10">
-      {/* Hero */}
-      <header className="mb-10">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--accent)] mb-3">
-          {now.toLocaleDateString("en-GB", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-        </div>
-        <h1 className="text-[40px] font-semibold tracking-[-0.03em] leading-[1.1] text-[var(--ink)]">
-          {needsAttention > 0
-            ? "What needs your attention."
-            : "Nothing's on fire."}
-        </h1>
-        <p className="mt-3 text-[15px] text-[var(--muted)] leading-relaxed">
-          {needsAttention > 0 ? (
-            <>
-              {overdue.length > 0 && (
-                <>
-                  <strong className="text-[var(--neg)]">{overdue.length} overdue</strong>
-                </>
-              )}
-              {overdue.length > 0 && staleAccounts.length > 0 && " · "}
-              {staleAccounts.length > 0 && (
-                <>
-                  <strong className="text-[var(--risk)]">
-                    {staleAccounts.length} going cold
-                  </strong>
-                </>
-              )}
-              {dueSoon.length > 0 && (
-                <>
-                  {" · "}
-                  <span>{dueSoon.length} due this week</span>
-                </>
-              )}
-            </>
-          ) : (
-            "All clear. Quiet is a feature."
-          )}
-        </p>
-      </header>
+    <div className="relative">
+      {/* Masthead — newspaper-style with date above title */}
+      <div className="max-w-[780px] mx-auto px-12 pt-16 pb-8">
+        <header className="mb-10 animate-fade">
+          <div className="flex items-baseline justify-between border-b border-[var(--ink)] pb-2 mb-10">
+            <span
+              className="font-serif text-[16px] italic text-[var(--ink-2)]"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Your desk, {formattedDate.split(",")[0].toLowerCase()}.
+            </span>
+            <span
+              className="font-serif text-[12px] italic text-[var(--muted)] tabular-nums"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              {formattedDate}
+            </span>
+          </div>
 
-      {/* Stat strip */}
-      <div className="grid grid-cols-5 gap-3 mb-10">
-        <StatCard
-          label="Open pipeline"
-          value={formatArr(pipelineArr, { compact: true })}
-          sub={`${pipelineCount} deal${pipelineCount === 1 ? "" : "s"}`}
-          icon={<TrendingUp className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Overdue replies"
-          value={String(overdueReplies.length)}
-          sub="awaiting counterparty"
-          danger={overdueReplies.length > 0}
-          icon={<MailQuestion className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Overdue actions"
-          value={String(overdue.length)}
-          sub={`action${overdue.length === 1 ? "" : "s"}`}
-          danger={overdue.length > 0}
-          icon={<AlertTriangle className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Due this week"
-          value={String(dueSoon.length)}
-          sub={`action${dueSoon.length === 1 ? "" : "s"}`}
-          icon={<Clock className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Cold"
-          value={String(staleAccounts.length)}
-          sub="no touch 14d+"
-          warn={staleAccounts.length > 0}
-          icon={<Snowflake className="w-4 h-4" />}
-        />
-      </div>
+          <h1 className="display mb-6" style={{ fontFamily: "var(--font-serif)" }}>
+            {totalIssues === 0 ? (
+              <>
+                A <em>quiet</em> morning.
+              </>
+            ) : totalIssues <= 2 ? (
+              <>Two <em>small things</em>.</>
+            ) : totalIssues <= 5 ? (
+              <>A <em>handful</em> of open threads.</>
+            ) : (
+              <>A <em>full</em> desk.</>
+            )}
+          </h1>
 
-      {/* Two columns */}
-      <div className="grid grid-cols-[1fr_380px] gap-6">
-        {/* Left column — action feed */}
-        <div className="space-y-6">
+          <p
+            className="narrative dropcap max-w-[620px]"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            {prose}
+          </p>
+
+          {/* Ambient pipeline figure — right aligned, subtle */}
+          <div className="flex items-baseline justify-between mt-10 pt-4 border-t border-[var(--rule-2)]">
+            <div className="flex items-baseline gap-8">
+              <Stat label="Open" value={String(counts.pipelineCount)} />
+              <Stat label="ARR" value={formatArr(counts.pipelineArr)} />
+              <Stat
+                label="Silent"
+                value={String(counts.overdueReplies)}
+                emphasis={counts.overdueReplies > 0}
+              />
+              <Stat
+                label="Overdue"
+                value={String(counts.overdueActions)}
+                emphasis={counts.overdueActions > 0}
+              />
+              <Stat label="This week" value={String(counts.dueSoon)} />
+            </div>
+            <Link
+              href="/pipeline"
+              className="text-[11.5px] text-[var(--muted)] hover:text-[var(--ink)] italic"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              see all →
+            </Link>
+          </div>
+        </header>
+
+        {/* SIGNAL SECTIONS — each group reads as a short article */}
+        <main className="space-y-14 stagger">
           {overdueReplies.length > 0 && (
-            <Section title="Overdue replies" accent="danger">
-              <div className="divide-y divide-[var(--line-2)]">
-                {overdueReplies.map((e) => (
-                  <Link
-                    key={e.id}
-                    href={`/accounts/${e.account.id}`}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition"
-                  >
-                    <div className="w-7 h-7 shrink-0 rounded-md bg-rose-50 border border-rose-100 flex items-center justify-center">
-                      <MailQuestion className="w-3.5 h-3.5 text-[var(--neg)]" strokeWidth={2.4} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13.5px] text-[var(--ink)]">
-                        <strong>{e.awaitingReplyFrom?.name}</strong> hasn&apos;t replied on{" "}
-                        <strong>{e.account.name}</strong>
-                      </div>
-                      <div className="text-[11.5px] text-[var(--muted)] truncate mt-0.5">
-                        &ldquo;{e.title}&rdquo; — sent {relative(e.occurredAt)}
-                      </div>
-                      <div className="text-[11px] text-[var(--neg)] font-medium mt-0.5">
-                        {formatTimeTo(e.awaitingReplyDueAt)}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </Section>
+            <SignalSection
+              title={overdueReplies.length === 1 ? "A thread gone quiet." : "Threads gone quiet."}
+              lede={
+                overdueReplies.length === 1
+                  ? "You sent something and nobody replied."
+                  : `${overdueReplies.length} people owe you a reply.`
+              }
+              tone="rust"
+            >
+              {overdueReplies.map((s, i) => (
+                <SignalRow
+                  key={i}
+                  href={`/accounts/${s.accountId}`}
+                  primary={<><strong>{s.orgName}</strong> on {s.accountName}</>}
+                  secondary={s.title}
+                  meta={s.meta}
+                  tone="rust"
+                />
+              ))}
+            </SignalSection>
           )}
 
-          {overdue.length > 0 && (
-            <Section title="Overdue actions" accent="danger">
-              <div className="divide-y divide-[var(--line-2)]">
-                {overdue.map((a) => (
-                  <ActionRow key={a.id} action={a} />
-                ))}
-              </div>
-            </Section>
+          {overdueActions.length > 0 && (
+            <SignalSection
+              title={overdueActions.length === 1 ? "A task you owe yourself." : "Tasks you owe yourself."}
+              lede={
+                overdueActions.length === 1
+                  ? "This one's past its date."
+                  : `${overdueActions.length} tasks past their date.`
+              }
+              tone="rust"
+            >
+              {overdueActions.map((s, i) => (
+                <SignalRow
+                  key={i}
+                  href={`/accounts/${s.accountId}`}
+                  primary={s.title}
+                  secondary={s.accountName}
+                  meta={s.meta}
+                  tone="rust"
+                />
+              ))}
+            </SignalSection>
+          )}
+
+          {stale.length > 0 && (
+            <SignalSection
+              title={stale.length === 1 ? "A deal is drifting." : "Deals drifting."}
+              lede={
+                stale.length === 1
+                  ? "Worth a nudge."
+                  : `Worth a nudge on ${stale.length}.`
+              }
+              tone="ochre"
+            >
+              {stale.map((s, i) => (
+                <SignalRow
+                  key={i}
+                  href={`/accounts/${s.accountId}`}
+                  primary={s.accountName}
+                  meta={s.meta}
+                  tone="ochre"
+                />
+              ))}
+            </SignalSection>
           )}
 
           {dueSoon.length > 0 && (
-            <Section title="Due this week" accent="warn">
-              <div className="divide-y divide-[var(--line-2)]">
-                {dueSoon.map((a) => (
-                  <ActionRow key={a.id} action={a} />
-                ))}
-              </div>
-            </Section>
+            <SignalSection
+              title="This week."
+              lede={`${dueSoon.length} action${dueSoon.length === 1 ? "" : "s"} on the horizon.`}
+              tone="neutral"
+            >
+              {dueSoon.map((s, i) => (
+                <SignalRow
+                  key={i}
+                  href={`/accounts/${s.accountId}`}
+                  primary={s.title}
+                  secondary={s.accountName}
+                  meta={s.meta}
+                  tone="neutral"
+                />
+              ))}
+            </SignalSection>
           )}
 
-          {staleAccounts.length > 0 && (
-            <Section title="Going cold" accent="warn">
-              <div className="divide-y divide-[var(--line-2)]">
-                {staleAccounts.map((a) => {
-                  const st = stageStyle(a.stage);
-                  return (
-                    <Link
-                      key={a.id}
-                      href={`/accounts/${a.id}`}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition"
-                    >
-                      <div className="w-8 h-8 rounded-md bg-[var(--bg-subtle)] border border-[var(--line-2)] flex items-center justify-center text-[11px] font-semibold text-[var(--ink-3)]">
-                        {initials(a.name)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-[14px] truncate">{a.name}</div>
-                        <div className="text-[12px] text-[var(--muted)] mt-0.5">
-                          Last touched {relative(a.lastTouch)}
-                        </div>
-                      </div>
-                      <span className={`tag ${st.tag}`}>
-                        <span className={`tag-dot ${st.dot}`} />
-                        {a.stage}
-                      </span>
-                      {a.arr != null && a.arr > 0 && (
-                        <span className="text-[12px] font-medium tabular-nums text-[var(--ink-3)] w-16 text-right">
-                          {formatArr(a.arr, { compact: true })}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            </Section>
+          {upcoming.length > 0 && (
+            <SignalSection
+              title="Coming up."
+              lede={`${upcoming.length} meeting${upcoming.length === 1 ? "" : "s"} booked.`}
+              tone="neutral"
+            >
+              {upcoming.map((s, i) => (
+                <SignalRow
+                  key={i}
+                  href={`/accounts/${s.accountId}`}
+                  primary={s.title}
+                  secondary={s.accountName}
+                  meta={s.meta}
+                  tone="neutral"
+                />
+              ))}
+            </SignalSection>
           )}
 
-          {overdue.length + dueSoon.length + staleAccounts.length === 0 && (
-            <div className="card p-10 text-center">
-              <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-[var(--accent-bg)] flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-[var(--accent)]" />
-              </div>
-              <div className="text-[15px] font-medium text-[var(--ink)]">
-                All accounts are on track.
-              </div>
-              <div className="text-[13px] text-[var(--muted)] mt-1">
-                Enjoy the quiet — or{" "}
-                <Link href="/accounts/new" className="text-[var(--accent-ink)] underline">
-                  add a new account
+          {totalIssues === 0 && counts.dueSoon === 0 && counts.upcomingMeetings === 0 && (
+            <div className="py-12 text-center">
+              <p
+                className="narrative italic text-[var(--muted)]"
+                style={{ fontFamily: "var(--font-serif)" }}
+              >
+                All quiet. Make a coffee, read something, or{" "}
+                <Link href="/accounts/new" className="underline">
+                  start a new deal
                 </Link>
                 .
-              </div>
+              </p>
             </div>
           )}
-        </div>
+        </main>
 
-        {/* Right column — upcoming + recent activity */}
-        <div className="space-y-6">
-          {upcoming.length > 0 && (
-            <Section title="Upcoming" muted>
-              <div className="divide-y divide-[var(--line-2)]">
-                {upcoming.map((e) => (
-                  <Link
-                    key={e.id}
-                    href={`/accounts/${e.accountId}`}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition"
-                  >
-                    <div className="shrink-0 w-10 text-center">
-                      <div className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-semibold">
-                        {new Date(e.occurredAt).toLocaleDateString("en-GB", { weekday: "short" })}
-                      </div>
-                      <div className="text-[15px] font-semibold tabular-nums text-[var(--ink)]">
-                        {new Date(e.occurredAt).getDate()}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0 pt-0.5">
-                      <div className="font-medium text-[13px] truncate">{e.title}</div>
-                      {e.account && (
-                        <div className="text-[11.5px] text-[var(--muted)] mt-0.5 truncate">
-                          {e.account.name}
-                        </div>
-                      )}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </Section>
-          )}
-
-          <Section title="Recent activity" muted>
-            {recentEntries.length === 0 ? (
-              <div className="px-4 py-6 text-center text-[13px] text-[var(--muted)]">
-                No activity yet.
-              </div>
-            ) : (
-              <div className="divide-y divide-[var(--line-2)]">
-                {recentEntries.map((e) => {
-                  const km = kindMeta(e.kind);
-                  return (
-                    <Link
-                      key={e.id}
-                      href={`/accounts/${e.accountId}`}
-                      className="flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition"
-                    >
-                      <div className={`shrink-0 w-7 h-7 rounded-md flex items-center justify-center ${km.tint} text-[13px]`}>
-                        {km.emoji}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-[13px] truncate">{e.title}</div>
-                        {e.account && (
-                          <div className="text-[11.5px] text-[var(--muted)] mt-0.5 truncate">
-                            {e.account.name} · {relative(e.createdAt)}
-                          </div>
-                        )}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </Section>
-        </div>
+        <footer className="mt-20 pt-6 border-t border-[var(--rule-2)] flex items-center justify-between text-[10.5px] text-[var(--muted-2)]">
+          <span
+            className="font-serif italic"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Compiled for you, locally.
+          </span>
+          <span className="flex items-center gap-1">
+            Press <kbd>⌘</kbd><kbd>K</kbd> to fly anywhere.
+          </span>
+        </footer>
       </div>
     </div>
   );
 }
 
-function StatCard({
+function Stat({
   label,
   value,
-  sub,
-  icon,
-  danger,
-  warn,
+  emphasis,
 }: {
   label: string;
   value: string;
-  sub?: string;
-  icon?: React.ReactNode;
-  danger?: boolean;
-  warn?: boolean;
+  emphasis?: boolean;
 }) {
-  const iconColor = danger
-    ? "text-[var(--neg)] bg-rose-50"
-    : warn
-    ? "text-[var(--risk)] bg-amber-50"
-    : "text-[var(--muted)] bg-[var(--bg-subtle)]";
   return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between">
-        <span className="label">{label}</span>
-        <div className={`w-6 h-6 rounded-[5px] flex items-center justify-center ${iconColor}`}>
-          {icon}
-        </div>
-      </div>
-      <div className="mt-2 text-[26px] font-semibold tracking-tight tabular-nums leading-none">
+    <div>
+      <div className="eyebrow text-[9.5px] mb-1">{label}</div>
+      <div
+        className={`font-serif text-[20px] tabular-nums leading-none ${
+          emphasis ? "text-[var(--rust)]" : "text-[var(--ink)]"
+        }`}
+        style={{ fontFamily: "var(--font-serif)" }}
+      >
         {value}
       </div>
-      {sub && <div className="mt-1 text-[11.5px] text-[var(--muted)]">{sub}</div>}
     </div>
   );
 }
 
-function Section({
+function SignalSection({
   title,
+  lede,
+  tone,
   children,
-  accent,
-  muted,
 }: {
   title: string;
+  lede: string;
+  tone: "rust" | "ochre" | "neutral";
   children: React.ReactNode;
-  accent?: "danger" | "warn";
-  muted?: boolean;
 }) {
-  const dotColor =
-    accent === "danger"
-      ? "bg-[var(--neg)]"
-      : accent === "warn"
-      ? "bg-[var(--risk)]"
-      : "bg-[var(--muted-2)]";
+  const toneColor =
+    tone === "rust"
+      ? "text-[var(--rust)]"
+      : tone === "ochre"
+      ? "text-[var(--ochre)]"
+      : "text-[var(--ink-3)]";
+
   return (
-    <section className="card overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-[10px] border-b border-[var(--line-2)]">
-        {!muted && <span className={`tag-dot ${dotColor}`} />}
-        <h2 className="label">{title}</h2>
+    <section>
+      <div className="flex items-baseline gap-3 mb-4">
+        <h2
+          className="headline"
+          style={{ fontFamily: "var(--font-serif)" }}
+        >
+          {title}
+        </h2>
+        <span
+          className={`font-serif italic text-[14px] ${toneColor}`}
+          style={{ fontFamily: "var(--font-serif)" }}
+        >
+          {lede}
+        </span>
       </div>
-      {children}
+      <div className="divide-y divide-[var(--rule-2)]">{children}</div>
     </section>
   );
 }
 
-function ActionRow({
-  action,
+function SignalRow({
+  href,
+  primary,
+  secondary,
+  meta,
+  tone,
 }: {
-  action: {
-    id: string;
-    title: string;
-    detail: string | null;
-    dueAt: Date | null;
-    done: boolean;
-    account: { id: string; name: string } | null;
-  };
+  href: string;
+  primary: React.ReactNode;
+  secondary?: React.ReactNode;
+  meta?: string;
+  tone: "rust" | "ochre" | "neutral";
 }) {
-  const overdue = !action.done && action.dueAt && new Date(action.dueAt) < new Date();
+  const metaColor =
+    tone === "rust"
+      ? "text-[var(--rust)]"
+      : tone === "ochre"
+      ? "text-[var(--ochre)]"
+      : "text-[var(--muted)]";
   return (
-    <div className="flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition group">
-      <ToggleAction actionId={action.id} done={action.done} />
-      <div className="flex-1 min-w-0">
-        <Link
-          href={action.account ? `/accounts/${action.account.id}` : "#"}
-          className="block"
-        >
-          <div className="font-medium text-[14px] truncate">{action.title}</div>
-          {action.detail && (
-            <div className="text-[12px] text-[var(--muted)] truncate mt-0.5">
-              {action.detail}
+    <Link
+      href={href}
+      className="block py-3.5 group"
+    >
+      <div className="flex items-baseline justify-between gap-6">
+        <div className="min-w-0 flex-1">
+          <div className="text-[15px] text-[var(--ink)] group-hover:text-[var(--accent-strong)] transition-colors">
+            {primary}
+          </div>
+          {secondary && (
+            <div
+              className="text-[13px] text-[var(--muted)] mt-1 italic"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              “{secondary}”
             </div>
           )}
-          <div className="text-[11.5px] mt-1 flex items-center gap-2">
-            {action.account && (
-              <>
-                <span className="text-[var(--muted)]">{action.account.name}</span>
-                <span className="text-[var(--line)]">•</span>
-              </>
-            )}
-            <span className={overdue ? "text-[var(--neg)] font-medium" : "text-[var(--muted)]"}>
-              {overdue ? "overdue" : "due"} {relative(action.dueAt)}
-            </span>
-          </div>
-        </Link>
+        </div>
+        {meta && (
+          <span
+            className={`text-[12px] italic tabular-nums shrink-0 ${metaColor}`}
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            {meta}
+          </span>
+        )}
       </div>
-    </div>
+    </Link>
   );
 }

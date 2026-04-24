@@ -20,10 +20,10 @@ export function ActiveLink({
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-2 px-2.5 py-[6px] mx-1 rounded-[6px] text-[13px] font-medium transition",
+        "flex items-center gap-2 px-2.5 py-[5px] mx-1 rounded-[5px] text-[12.5px] transition-colors duration-150 [transition-timing-function:var(--ease)]",
         active
-          ? "bg-[var(--bg-subtle)] text-[var(--ink)]"
-          : "text-[var(--ink-3)] hover:bg-[var(--bg-hover)] hover:text-[var(--ink)]"
+          ? "bg-[var(--paper-2)] text-[var(--ink)] font-medium"
+          : "text-[var(--ink-3)] hover:bg-[var(--paper-hover)] hover:text-[var(--ink)]"
       )}
     >
       {children}
