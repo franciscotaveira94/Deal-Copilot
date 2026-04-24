@@ -1,0 +1,158 @@
+// Deal Copilot - personal AE tool
+// Local SQLite, no cloud, no sync.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// An account = a company / customer you're working
+model Account {
+  id          String   @id @default(cuid())
+  name        String
+  domain      String?
+  industry    String?
+  stage       String   @default("discovery")
+  stageChangedAt DateTime @default(now())
+  arr         Int?
+  priority    String   @default("medium")
+  status      String   @default("active")
+  summary     String?
+  nextAction  String?
+  nextActionDue DateTime?
+  lastTouch   DateTime @default(now())
+  notes       String?
+
+  // --- MEDDIC qualification (free-text) ---
+  meddicMetrics           String?
+  meddicEconomicBuyer     String?
+  meddicDecisionCriteria  String?
+  meddicDecisionProcess   String?
+  meddicPainIdentified    String?
+  meddicChampion          String?
+
+  // --- Pre-call brief cache ---
+  briefContent   String?
+  briefGeneratedAt DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  timeline    TimelineEntry[]
+  actions     Action[]
+  contacts    Contact[]
+  chats       ChatMessage[]
+  parties     DealParty[]
+
+  @@index([stage])
+  @@index([priority])
+  @@index([lastTouch])
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  organisationId String?
+  organisation   Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  name      String
+  role      String?   // job title e.g. "Head of Security" (kept for backward compat)
+  persona   String   @default("unknown") // champion | economic-buyer | influencer | blocker | user | unknown
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([organisationId])
+  @@index([persona])
+}
+
+// Organisation = a company in your universe (a customer, a distributor, a partner, you).
+// Same org (e.g. "Natilik") can be a partner on many deals.
+model Organisation {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  domain      String?
+  kind        String   @default("unknown")  // cloudflare | distributor | partner | customer | other | unknown
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parties  DealParty[]
+  contacts Contact[]
+
+  @@index([kind])
+}
+
+// DealParty = an organisation's role on a specific deal, plus activity tracking.
+// e.g. Natilik is the implementation partner on the Hibernia Line deal.
+model DealParty {
+  id             String   @id @default(cuid())
+  accountId      String
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  role           String   // customer | distributor | partner | cloudflare | other
+  notes          String?
+  lastActivityAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([accountId, organisationId])
+  @@index([accountId])
+  @@index([organisationId])
+}
+
+model TimelineEntry {
+  id         String   @id @default(cuid())
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind       String
+  title      String
+  occurredAt DateTime @default(now())
+  summary    String?
+  content    String
+  source     String?
+  sentiment  String?
+  createdAt  DateTime @default(now())
+
+  @@index([accountId, occurredAt])
+  @@index([kind])
+}
+
+model Action {
+  id         String    @id @default(cuid())
+  accountId  String?
+  account    Account?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  title      String
+  detail     String?
+  dueAt      DateTime?
+  done       Boolean   @default(false)
+  doneAt     DateTime?
+  priority   String    @default("medium")
+  source     String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([done])
+  @@index([dueAt])
+  @@index([accountId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+}

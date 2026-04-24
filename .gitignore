@@ -39,3 +39,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/generated/prisma
+
+# local SQLite database — contains real customer data
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# generated prisma client (regenerate with `npx prisma generate`)
+/src/generated
+
+# local SQLite DBs at any level
+*.db
+*.db-journal
