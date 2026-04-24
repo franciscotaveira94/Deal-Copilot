@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, ChevronDown } from "lucide-react";
+import { Trash2, ChevronDown, ArrowUpRight, ArrowDownLeft, Clock, Check } from "lucide-react";
 import { kindMeta, relative, sentimentStyle, shortDate } from "@/lib/utils";
+import { formatTimeTo, isOverdue } from "@/lib/followup";
 
 type Entry = {
   id: string;
@@ -13,6 +14,11 @@ type Entry = {
   summary: string | null;
   sentiment: string | null;
   content: string;
+  direction?: string | null;
+  awaitingReplyFromId?: string | null;
+  awaitingReplyDueAt?: Date | string | null;
+  awaitedReplyResolvedAt?: Date | string | null;
+  awaitingReplyFrom?: { id: string; name: string } | null;
 };
 
 export function TimelineEntryRow({ entry }: { entry: Entry }) {
@@ -21,11 +27,22 @@ export function TimelineEntryRow({ entry }: { entry: Entry }) {
   const [busy, setBusy] = useState(false);
 
   const km = kindMeta(entry.kind);
+  const awaitingUnresolved =
+    entry.awaitingReplyFromId && !entry.awaitedReplyResolvedAt && entry.awaitingReplyDueAt;
+  const awaitingResolved =
+    entry.awaitingReplyFromId && entry.awaitedReplyResolvedAt;
+  const overdue = awaitingUnresolved && isOverdue(entry.awaitingReplyDueAt);
 
   async function del() {
     if (!confirm("Delete this entry? This cannot be undone.")) return;
     setBusy(true);
     await fetch(`/api/timeline/${entry.id}`, { method: "DELETE" });
+    router.refresh();
+  }
+
+  async function resolve() {
+    setBusy(true);
+    await fetch(`/api/timeline/${entry.id}/resolve`, { method: "POST" });
     router.refresh();
   }
 
@@ -44,12 +61,30 @@ export function TimelineEntryRow({ entry }: { entry: Entry }) {
         <div className="p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span
                   className={`inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] text-[10.5px] font-semibold uppercase tracking-wider ${km.tint}`}
                 >
                   {km.label}
                 </span>
+                {entry.direction === "outbound" && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] text-[10px] font-semibold text-[var(--accent-ink)] bg-[var(--accent-bg)]"
+                    title="You sent this"
+                  >
+                    <ArrowUpRight className="w-2.5 h-2.5" strokeWidth={2.5} />
+                    SENT
+                  </span>
+                )}
+                {entry.direction === "inbound" && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] text-[10px] font-semibold text-emerald-700 bg-emerald-50"
+                    title="You received this"
+                  >
+                    <ArrowDownLeft className="w-2.5 h-2.5" strokeWidth={2.5} />
+                    RECEIVED
+                  </span>
+                )}
                 <span className="text-[11px] text-[var(--muted)]">
                   {shortDate(entry.occurredAt)} · {relative(entry.occurredAt)}
                 </span>
@@ -61,6 +96,46 @@ export function TimelineEntryRow({ entry }: { entry: Entry }) {
                   </span>
                 )}
               </div>
+
+              {(awaitingUnresolved || awaitingResolved) && entry.awaitingReplyFrom && (
+                <div
+                  className={`inline-flex items-center gap-1.5 px-2 py-[3px] rounded-[5px] text-[11px] font-medium mb-1.5 ${
+                    awaitingResolved
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                      : overdue
+                      ? "bg-rose-50 text-rose-700 border border-rose-100"
+                      : "bg-amber-50 text-amber-800 border border-amber-100"
+                  }`}
+                >
+                  {awaitingResolved ? (
+                    <>
+                      <Check className="w-3 h-3" strokeWidth={2.4} />
+                      <span>
+                        {entry.awaitingReplyFrom.name} replied{" "}
+                        {relative(entry.awaitedReplyResolvedAt!)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-3 h-3" strokeWidth={2.4} />
+                      <span>
+                        {overdue ? "Overdue from" : "Awaiting"}{" "}
+                        <strong>{entry.awaitingReplyFrom.name}</strong>
+                        {" · "}
+                        {formatTimeTo(entry.awaitingReplyDueAt!)}
+                      </span>
+                      <button
+                        onClick={resolve}
+                        disabled={busy}
+                        className="ml-1 text-[10.5px] hover:underline"
+                        title="Mark as replied"
+                      >
+                        mark replied
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               <h3 className="text-[14.5px] font-semibold text-[var(--ink)] leading-snug">
                 {entry.title}
               </h3>

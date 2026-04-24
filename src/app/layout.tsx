@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
+import { OverduePoller } from "@/components/overdue-poller";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -24,6 +25,7 @@ export default function RootLayout({
           <Sidebar />
           <main className="flex-1 min-w-0 relative">{children}</main>
         </div>
+        <OverduePoller />
       </body>
     </html>
   );

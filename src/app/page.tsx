@@ -9,14 +9,16 @@ import {
   kindMeta,
   initials,
 } from "@/lib/utils";
-import { AlertTriangle, Clock, Snowflake, Calendar, TrendingUp } from "lucide-react";
+import { AlertTriangle, Clock, Snowflake, Calendar, TrendingUp, MailQuestion } from "lucide-react";
 import { ToggleAction } from "@/components/toggle-action";
+import { formatTimeTo } from "@/lib/followup";
 
 export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
   const now = new Date();
-  const [overdue, dueSoon, stale, upcoming, recentEntries, pipelineGroups] = await Promise.all([
+  const [overdue, dueSoon, stale, upcoming, recentEntries, pipelineGroups, overdueReplies] =
+    await Promise.all([
     prisma.action.findMany({
       where: { done: false, dueAt: { lt: now } },
       include: { account: true },
@@ -63,12 +65,25 @@ export default async function TodayPage() {
       _sum: { arr: true },
       _count: true,
     }),
+    prisma.timelineEntry.findMany({
+      where: {
+        awaitingReplyDueAt: { lt: now },
+        awaitedReplyResolvedAt: null,
+        awaitingReplyFromId: { not: null },
+      },
+      include: {
+        account: { select: { id: true, name: true } },
+        awaitingReplyFrom: { select: { id: true, name: true } },
+      },
+      orderBy: { awaitingReplyDueAt: "asc" },
+      take: 20,
+    }),
   ]);
 
   const staleAccounts = stale.filter((a) => daysAgo(a.lastTouch) >= 14).slice(0, 8);
   const pipelineArr = pipelineGroups.reduce((s, g) => s + (g._sum.arr || 0), 0);
   const pipelineCount = pipelineGroups.reduce((s, c) => s + c._count, 0);
-  const needsAttention = overdue.length + staleAccounts.length;
+  const needsAttention = overdue.length + staleAccounts.length + overdueReplies.length;
 
   return (
     <div className="max-w-[1200px] mx-auto px-10 py-10">
@@ -116,7 +131,7 @@ export default async function TodayPage() {
       </header>
 
       {/* Stat strip */}
-      <div className="grid grid-cols-4 gap-3 mb-10">
+      <div className="grid grid-cols-5 gap-3 mb-10">
         <StatCard
           label="Open pipeline"
           value={formatArr(pipelineArr, { compact: true })}
@@ -124,7 +139,14 @@ export default async function TodayPage() {
           icon={<TrendingUp className="w-4 h-4" />}
         />
         <StatCard
-          label="Overdue"
+          label="Overdue replies"
+          value={String(overdueReplies.length)}
+          sub="awaiting counterparty"
+          danger={overdueReplies.length > 0}
+          icon={<MailQuestion className="w-4 h-4" />}
+        />
+        <StatCard
+          label="Overdue actions"
           value={String(overdue.length)}
           sub={`action${overdue.length === 1 ? "" : "s"}`}
           danger={overdue.length > 0}
@@ -149,8 +171,38 @@ export default async function TodayPage() {
       <div className="grid grid-cols-[1fr_380px] gap-6">
         {/* Left column — action feed */}
         <div className="space-y-6">
+          {overdueReplies.length > 0 && (
+            <Section title="Overdue replies" accent="danger">
+              <div className="divide-y divide-[var(--line-2)]">
+                {overdueReplies.map((e) => (
+                  <Link
+                    key={e.id}
+                    href={`/accounts/${e.account.id}`}
+                    className="flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition"
+                  >
+                    <div className="w-7 h-7 shrink-0 rounded-md bg-rose-50 border border-rose-100 flex items-center justify-center">
+                      <MailQuestion className="w-3.5 h-3.5 text-[var(--neg)]" strokeWidth={2.4} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13.5px] text-[var(--ink)]">
+                        <strong>{e.awaitingReplyFrom?.name}</strong> hasn&apos;t replied on{" "}
+                        <strong>{e.account.name}</strong>
+                      </div>
+                      <div className="text-[11.5px] text-[var(--muted)] truncate mt-0.5">
+                        &ldquo;{e.title}&rdquo; — sent {relative(e.occurredAt)}
+                      </div>
+                      <div className="text-[11px] text-[var(--neg)] font-medium mt-0.5">
+                        {formatTimeTo(e.awaitingReplyDueAt)}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </Section>
+          )}
+
           {overdue.length > 0 && (
-            <Section title="Overdue" accent="danger">
+            <Section title="Overdue actions" accent="danger">
               <div className="divide-y divide-[var(--line-2)]">
                 {overdue.map((a) => (
                   <ActionRow key={a.id} action={a} />

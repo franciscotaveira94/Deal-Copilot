@@ -2,11 +2,12 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ActiveLink } from "./active-link";
 import { SidebarSearch } from "./sidebar-search";
-import { Kanban, LayoutGrid, CheckCircle2, Plus, Sparkles, Home, Building2 } from "lucide-react";
+import { Kanban, LayoutGrid, CheckCircle2, Plus, Sparkles, Home, Building2, Settings as SettingsIcon, MailQuestion } from "lucide-react";
 import { stageStyle, STAGE_LABELS, formatArr, initials } from "@/lib/utils";
 
 export async function Sidebar() {
-  const [accounts, openActions, pipelineSummary, orgCount] = await Promise.all([
+  const now = new Date();
+  const [accounts, openActions, pipelineSummary, orgCount, overdueRepliesCount] = await Promise.all([
     prisma.account.findMany({
       where: { status: "active" },
       orderBy: { lastTouch: "desc" },
@@ -23,6 +24,13 @@ export async function Sidebar() {
       _count: true,
     }),
     prisma.organisation.count(),
+    prisma.timelineEntry.count({
+      where: {
+        awaitingReplyDueAt: { lt: now },
+        awaitedReplyResolvedAt: null,
+        awaitingReplyFromId: { not: null },
+      },
+    }),
   ]);
 
   const pipelineArr = pipelineSummary.reduce((sum, g) => sum + (g._sum.arr || 0), 0);
@@ -88,6 +96,19 @@ export async function Sidebar() {
               {openActions}
             </span>
           )}
+        </ActiveLink>
+        {overdueRepliesCount > 0 && (
+          <ActiveLink href="/">
+            <MailQuestion className="w-[14px] h-[14px] text-[var(--neg)]" />
+            <span className="text-[var(--neg)]">Overdue replies</span>
+            <span className="ml-auto text-[10.5px] text-white bg-[var(--neg)] font-semibold rounded-full w-[16px] h-[16px] flex items-center justify-center tabular-nums">
+              {overdueRepliesCount}
+            </span>
+          </ActiveLink>
+        )}
+        <ActiveLink href="/settings">
+          <SettingsIcon className="w-[14px] h-[14px]" />
+          <span>Settings</span>
         </ActiveLink>
       </nav>
 

@@ -82,11 +82,14 @@ model Organisation {
   domain      String?
   kind        String   @default("unknown")  // cloudflare | distributor | partner | customer | other | unknown
   notes       String?
+  // Optional per-org SLA override (hours). If null, we use the role-based default.
+  slaHours    Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  parties  DealParty[]
-  contacts Contact[]
+  parties         DealParty[]
+  contacts        Contact[]
+  awaitingEntries TimelineEntry[] @relation("AwaitingOrg")
 
   @@index([kind])
 }
@@ -123,8 +126,23 @@ model TimelineEntry {
   sentiment  String?
   createdAt  DateTime @default(now())
 
+  // Direction + follow-up tracking
+  // direction: "outbound" = I sent it; "inbound" = someone else sent it; null = unknown/note
+  direction             String?
+  // The org we're waiting to hear from (null if this entry doesn't start a wait)
+  awaitingReplyFromId   String?
+  awaitingReplyFrom     Organisation? @relation("AwaitingOrg", fields: [awaitingReplyFromId], references: [id], onDelete: SetNull)
+  awaitingReplyDueAt    DateTime?
+  // Set automatically when the counterparty replies, or manually cleared
+  awaitedReplyResolvedAt DateTime?
+  // Track that we already sent a notification for this overdue (don't spam)
+  overdueNotifiedAt     DateTime?
+
   @@index([accountId, occurredAt])
   @@index([kind])
+  @@index([awaitingReplyFromId])
+  @@index([awaitingReplyDueAt])
+  @@index([awaitedReplyResolvedAt])
 }
 
 model Action {
@@ -155,4 +173,20 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   @@index([accountId, createdAt])
+}
+
+// Singleton row (id="default") for user-level preferences
+model Settings {
+  id                     String   @id @default("default")
+  googleChatWebhookUrl   String?  // Incoming webhook URL for alerts
+  slackWebhookUrl        String?
+  // Per-role SLA in hours — can be overridden per org
+  slaDistributorHours    Int      @default(4)
+  slaPartnerHours        Int      @default(24)
+  slaCustomerHours       Int      @default(72)
+  slaOtherHours          Int      @default(48)
+  // Whether to show browser notifications
+  notificationsEnabled   Boolean  @default(true)
+  updatedAt              DateTime @updatedAt
+  createdAt              DateTime @default(now())
 }

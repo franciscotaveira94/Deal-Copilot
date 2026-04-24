@@ -38,7 +38,10 @@ export default async function AccountDetail({
   const account = await prisma.account.findUnique({
     where: { id },
     include: {
-      timeline: { orderBy: { occurredAt: "desc" } },
+      timeline: {
+        orderBy: { occurredAt: "desc" },
+        include: { awaitingReplyFrom: { select: { id: true, name: true } } },
+      },
       actions: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
       contacts: { orderBy: { createdAt: "asc" } },
       chats: { orderBy: { createdAt: "asc" } },
@@ -76,6 +79,13 @@ export default async function AccountDetail({
       lastActivityAt: p.lastActivityAt,
       organisationName: p.organisation.name,
     })),
+    overdueReplies: account.timeline.filter(
+      (e) =>
+        e.awaitingReplyFromId &&
+        !e.awaitedReplyResolvedAt &&
+        e.awaitingReplyDueAt &&
+        new Date(e.awaitingReplyDueAt) < new Date()
+    ).length,
   });
 
   const brief: PB | null = account.briefContent

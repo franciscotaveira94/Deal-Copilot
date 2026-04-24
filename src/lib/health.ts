@@ -42,6 +42,7 @@ type AccountInput = {
     lastActivityAt: Date | string | null;
     organisationName: string;
   }>;
+  overdueReplies?: number; // count of unresolved overdue "awaiting reply" entries
 };
 
 // Stage-specific "time in stage should be below X days" ceilings
@@ -221,6 +222,21 @@ export function scoreAccount(a: AccountInput): Health {
       detail: "Who is actually buying? Add the customer org.",
     });
     score -= 8;
+  }
+
+  // --- 5c. Overdue replies ---
+  const overdueReplies = a.overdueReplies ?? 0;
+  if (overdueReplies > 0) {
+    flags.push({
+      id: "overdue-replies",
+      level: overdueReplies >= 2 ? "critical" : "warning",
+      label:
+        overdueReplies === 1
+          ? "1 overdue reply"
+          : `${overdueReplies} overdue replies`,
+      detail: "Counterparties past SLA. Re-engage or escalate.",
+    });
+    score -= Math.min(20, overdueReplies * 7);
   }
 
   // --- 6. MEDDIC completion ---
