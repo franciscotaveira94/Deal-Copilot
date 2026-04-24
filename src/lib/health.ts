@@ -37,6 +37,11 @@ type AccountInput = {
   meddicChampion: string | null;
   contacts: Array<{ persona: string }>;
   timeline: Array<{ sentiment: string | null; occurredAt: Date | string }>;
+  parties?: Array<{
+    role: string;
+    lastActivityAt: Date | string | null;
+    organisationName: string;
+  }>;
 };
 
 // Stage-specific "time in stage should be below X days" ceilings
@@ -172,6 +177,50 @@ export function scoreAccount(a: AccountInput): Health {
       label: "Sentiment trending positive",
     });
     score += 5;
+  }
+
+  // --- 5b. Party-level silence (multi-party deals) ---
+  const parties = a.parties ?? [];
+  // Parties that aren't us and have meaningfully stale activity
+  const quietParties = parties.filter(
+    (p) =>
+      p.role !== "cloudflare" &&
+      p.lastActivityAt &&
+      daysAgo(p.lastActivityAt) >= 14
+  );
+  if (quietParties.length > 0) {
+    // Call out the worst offender by name
+    const sorted = [...quietParties].sort(
+      (x, y) => daysAgo(y.lastActivityAt!) - daysAgo(x.lastActivityAt!)
+    );
+    const worst = sorted[0];
+    const worstDays = daysAgo(worst.lastActivityAt!);
+    flags.push({
+      id: "party-quiet",
+      level: worstDays >= 30 ? "critical" : "warning",
+      label: `${worst.organisationName} has gone quiet`,
+      detail:
+        quietParties.length === 1
+          ? `No activity from them in ${worstDays} days`
+          : `${quietParties.length} parties inactive — ${worst.organisationName} worst at ${worstDays}d`,
+    });
+    score -= worstDays >= 30 ? 12 : 6;
+  }
+
+  // Multi-party deals without a partner-party relationship is worth noting
+  const roles = new Set(parties.map((p) => p.role));
+  if (
+    ["proposal", "negotiation"].includes(a.stage) &&
+    !roles.has("customer") &&
+    parties.length > 0
+  ) {
+    flags.push({
+      id: "no-customer-party",
+      level: "warning",
+      label: "No customer identified on deal",
+      detail: "Who is actually buying? Add the customer org.",
+    });
+    score -= 8;
   }
 
   // --- 6. MEDDIC completion ---

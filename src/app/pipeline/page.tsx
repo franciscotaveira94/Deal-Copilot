@@ -22,6 +22,13 @@ export default async function PipelinePage() {
         orderBy: { occurredAt: "desc" },
         take: 5,
       },
+      parties: {
+        select: {
+          role: true,
+          lastActivityAt: true,
+          organisation: { select: { name: true } },
+        },
+      },
     },
   });
 
@@ -41,6 +48,11 @@ export default async function PipelinePage() {
       meddicChampion: a.meddicChampion,
       contacts: a.contacts,
       timeline: a.timeline,
+      parties: a.parties.map((p) => ({
+        role: p.role,
+        lastActivityAt: p.lastActivityAt,
+        organisationName: p.organisation.name,
+      })),
     }),
   }));
 

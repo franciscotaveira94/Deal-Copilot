@@ -2,11 +2,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ActiveLink } from "./active-link";
 import { SidebarSearch } from "./sidebar-search";
-import { Kanban, LayoutGrid, CheckCircle2, Plus, Sparkles, Home } from "lucide-react";
+import { Kanban, LayoutGrid, CheckCircle2, Plus, Sparkles, Home, Building2 } from "lucide-react";
 import { stageStyle, STAGE_LABELS, formatArr, initials } from "@/lib/utils";
 
 export async function Sidebar() {
-  const [accounts, openActions, pipelineSummary] = await Promise.all([
+  const [accounts, openActions, pipelineSummary, orgCount] = await Promise.all([
     prisma.account.findMany({
       where: { status: "active" },
       orderBy: { lastTouch: "desc" },
@@ -22,6 +22,7 @@ export async function Sidebar() {
       _sum: { arr: true },
       _count: true,
     }),
+    prisma.organisation.count(),
   ]);
 
   const pipelineArr = pipelineSummary.reduce((sum, g) => sum + (g._sum.arr || 0), 0);
@@ -69,6 +70,15 @@ export async function Sidebar() {
         <ActiveLink href="/accounts">
           <LayoutGrid className="w-[14px] h-[14px]" />
           <span>All accounts</span>
+        </ActiveLink>
+        <ActiveLink href="/orgs">
+          <Building2 className="w-[14px] h-[14px]" />
+          <span>Organisations</span>
+          {orgCount > 0 && (
+            <span className="ml-auto text-[10.5px] text-[var(--muted)] font-medium tabular-nums">
+              {orgCount}
+            </span>
+          )}
         </ActiveLink>
         <ActiveLink href="/actions">
           <CheckCircle2 className="w-[14px] h-[14px]" />

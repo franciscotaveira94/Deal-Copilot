@@ -22,6 +22,7 @@ import { PrepBrief as PrepBriefCmp } from "@/components/prep-brief";
 import { MeddicPanel } from "@/components/meddic-panel";
 import { ContactsPanel } from "@/components/contacts-panel";
 import { HealthPanel } from "@/components/health-panel";
+import { PartiesPanel } from "@/components/parties-panel";
 import { HealthRing } from "@/components/health-ring";
 import { backendMeta } from "@/lib/ai";
 import type { PrepBrief as PB } from "@/lib/ai-extract";
@@ -41,6 +42,10 @@ export default async function AccountDetail({
       actions: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
       contacts: { orderBy: { createdAt: "asc" } },
       chats: { orderBy: { createdAt: "asc" } },
+      parties: {
+        include: { organisation: true },
+        orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+      },
     },
   });
 
@@ -65,6 +70,11 @@ export default async function AccountDetail({
     timeline: account.timeline.map((e) => ({
       sentiment: e.sentiment,
       occurredAt: e.occurredAt,
+    })),
+    parties: account.parties.map((p) => ({
+      role: p.role,
+      lastActivityAt: p.lastActivityAt,
+      organisationName: p.organisation.name,
     })),
   });
 
@@ -219,6 +229,7 @@ export default async function AccountDetail({
             {/* Right column — qualification */}
             <div className="space-y-5 min-w-0">
               <HealthPanel health={health} />
+              <PartiesPanel accountId={account.id} parties={account.parties} />
               <ContactsPanel accountId={account.id} contacts={account.contacts} />
               <MeddicPanel
                 accountId={account.id}
